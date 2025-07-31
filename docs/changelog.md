@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSS embedding capabilities
 - Unit tests
 - User and developer documentation
+- Enhanced HTML tag support with !html[] syntax
+- JavaScript execution blocks with js-power syntax
+- Improved attribute syntax with key-value pair support
 
 ### Changed
 

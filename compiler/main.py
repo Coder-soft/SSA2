@@ -27,6 +27,20 @@ def execute_python_code(code):
         return f"Error executing Python code:\n<pre>{e}</pre>"
 
 
+def process_enhanced_html_tags(content):
+    """Process enhanced HTML tag syntax: !html[<div class="custom">Content</div>]"""
+    # Pattern to match !html[content] where content can contain nested brackets
+    pattern = r'!html\[((?:[^\[\]]|\[[^\[\]]*\])*)\]'
+    
+    def replace_html_tag(match):
+        html_content = match.group(1)
+        # Unescape any escaped brackets
+        html_content = html_content.replace('\\[', '[').replace('\\]', ']')
+        return html_content
+    
+    return re.sub(pattern, replace_html_tag, content)
+
+
 def custom_fence_plugin(md):
     """A markdown-it-py plugin to handle custom code blocks."""
 
@@ -47,6 +61,11 @@ def custom_fence_plugin(md):
                 env["css_power_styles"] = []
             env["css_power_styles"].append(token.content)
             return "" # Return an empty string to not render the block
+        
+        elif info == "js-power":
+            # For JavaScript, we'll embed it in a script tag for client-side execution
+            code = token.content
+            return f'<script>{code}</script>'
 
         # Fallback to the default renderer for all other languages
         return _default_fence_renderer(tokens, idx, options, env, self)
@@ -55,7 +74,89 @@ def custom_fence_plugin(md):
 
 
 def process_html_attributes(html_content):
-    """Process custom attribute syntax in HTML content."""
+    """Process custom attribute syntax in HTML content with enhanced support."""
+    # Enhanced regex pattern to match more flexible attribute syntax
+    # Supports: {#id .class1 .class2} or {#id} or {.class1 .class2} or {key=value key2="value"}
+    attr_pattern = r'\{([^}]+)\}'
+    
+    def parse_attributes(attr_string):
+        """Parse attribute string into id, classes, and other attributes."""
+        attrs = {"id": "", "class": [], "other": {}}
+        
+        # Split by spaces but respect quoted strings
+        parts = []
+        current_part = ""
+        in_quotes = False
+        quote_char = None
+        
+        i = 0
+        while i < len(attr_string):
+            char = attr_string[i]
+            
+            if char in ['"', "'"] and (i == 0 or attr_string[i-1] != '\\'):
+                if not in_quotes:
+                    in_quotes = True
+                    quote_char = char
+                elif char == quote_char:
+                    in_quotes = False
+                    quote_char = None
+                current_part += char
+            elif char == ' ' and not in_quotes:
+                if current_part:
+                    parts.append(current_part)
+                    current_part = ""
+            else:
+                current_part += char
+            i += 1
+        
+        if current_part:
+            parts.append(current_part)
+        
+        # Process each part
+        for part in parts:
+            if part.startswith('#'):
+                attrs["id"] = part[1:]
+            elif part.startswith('.'):
+                attrs["class"].append(part[1:])
+            elif '=' in part:
+                # Handle key=value pairs
+                key, value = part.split('=', 1)
+                # Remove quotes if present
+                if value.startswith('"') and value.endswith('"') and len(value) > 1:
+                    value = value[1:-1]
+                elif value.startswith("'") and value.endswith("'") and len(value) > 1:
+                    value = value[1:-1]
+                attrs["other"][key] = value
+            else:
+                # Handle bare classes (without dot prefix)
+                attrs["class"].append(part)
+        
+        return attrs
+    
+    def build_attributes_string(attrs_dict, existing_attrs=""):
+        """Build attribute string from parsed attributes."""
+        attr_str = existing_attrs
+        
+        # Add ID if present
+        if attrs_dict["id"]:
+            attr_str += f' id="{attrs_dict["id"]}"'
+        
+        # Add classes
+        if attrs_dict["class"]:
+            class_str = " ".join(attrs_dict["class"])
+            # Check if a class attribute already exists
+            if 'class="' in attr_str:
+                # Append new classes
+                attr_str = re.sub(r'class="([^"]*)"', rf'class="\1 {class_str}"', attr_str)
+            else:
+                attr_str += f' class="{class_str}"'
+        
+        # Add other attributes
+        for key, value in attrs_dict["other"].items():
+            attr_str += f' {key}="{value}"'
+        
+        return attr_str
+    
     # First, handle paragraphs with embedded attribute blocks
     # Find all <p> tags that contain attribute blocks in their text
     for p_match in re.finditer(r'<p([^>]*)>(.*?)</p>', html_content, re.DOTALL):
@@ -63,38 +164,16 @@ def process_html_attributes(html_content):
         p_content = p_match.group(2)  # Content of the paragraph
         
         # Check if the paragraph content contains an attribute block
-        attr_match = re.search(r'\{([#.])(.+?)\}', p_content)
+        attr_match = re.search(attr_pattern, p_content)
         if attr_match:
-            prefix = attr_match.group(1)  # '#' or '.'
-            attr_block = attr_match.group(2)
-            
-            # Prepend the prefix if it's missing
-            if ' ' not in attr_block and not attr_block.startswith('.') and not attr_block.startswith('#'):
-                attr_block = prefix + attr_block
-            
-            # Extract IDs and classes from the block
-            attrs = {"id": "", "class": []}
-            for part in attr_block.split():
-                if part.startswith('#'):
-                    attrs["id"] = part[1:]
-                elif part.startswith('.'):
-                    attrs["class"].append(part[1:])
+            attr_string = attr_match.group(1)
+            attrs = parse_attributes(attr_string)
             
             # Construct new attributes for the paragraph tag
-            new_attrs = p_attrs  # Start with existing attributes
-            if attrs["id"]:
-                new_attrs += f' id="{attrs["id"]}"'
-            if attrs["class"]:
-                class_str = " ".join(attrs["class"])
-                # Check if a class attribute already exists
-                if 'class="' in new_attrs:
-                    # Append new classes
-                    new_attrs = re.sub(r'class="([^"]*)"', rf'class="\1 {class_str}"', new_attrs)
-                else:
-                    new_attrs += f' class="{class_str}"'
+            new_attrs = build_attributes_string(attrs, p_attrs)
             
             # Remove the attribute block from the paragraph content
-            clean_content = re.sub(r'\{([#.])(.+?)\}', '', p_content)
+            clean_content = re.sub(attr_pattern, '', p_content)
             
             # Create the new paragraph tag
             new_p_tag = f"<p{new_attrs}>{clean_content}</p>"
@@ -104,22 +183,14 @@ def process_html_attributes(html_content):
             html_content = html_content[:start] + new_p_tag + html_content[end:]
     
     # Then, handle standalone attribute blocks (for headings, etc.)
-    # Find all attribute blocks, e.g., `{#my-id .my-class}` or `{.my-class}`
-    for match in re.finditer(r'\{([#.])(.+?)\}', html_content):
-        prefix = match.group(1)  # '#' or '.'
-        attr_block = match.group(2)
-        
-        # Prepend the prefix if it's missing
-        if ' ' not in attr_block and not attr_block.startswith('.') and not attr_block.startswith('#'):
-            attr_block = prefix + attr_block
-        
-        # Extract IDs and classes from the block
-        attrs = {"id": "", "class": []}
-        for part in attr_block.split():
-            if part.startswith('#'):
-                attrs["id"] = part[1:]
-            elif part.startswith('.'):
-                attrs["class"].append(part[1:])
+    # Find all attribute blocks
+    # Create a list to store all matches to process them in reverse order
+    matches = list(re.finditer(attr_pattern, html_content))
+    
+    # Process matches in reverse order to avoid index shifting issues
+    for match in reversed(matches):
+        attr_string = match.group(1)
+        attrs = parse_attributes(attr_string)
         
         # Find the last HTML tag before the attribute block
         preceding_html = html_content[:match.start()]
@@ -136,26 +207,16 @@ def process_html_attributes(html_content):
             existing_attrs = last_tag_match.group(2)
             
             # Construct the new attributes string
-            new_attrs = ""
-            if attrs["id"]:
-                new_attrs += f' id="{attrs["id"]}"'
-            if attrs["class"]:
-                class_str = " ".join(attrs["class"])
-                # Check if a class attribute already exists
-                if 'class="' in existing_attrs:
-                    # Append new classes
-                    existing_attrs = re.sub(r'class="([^"]*)"', rf'class="\1 {class_str}"', existing_attrs)
-                else:
-                    new_attrs += f' class="{class_str}"'
-
+            new_attrs = build_attributes_string(attrs, existing_attrs)
+            
             # Replace the old tag with the new one
             start, end = last_tag_match.span()
-            new_tag = f"<{tag_name}{existing_attrs}{new_attrs}>"
-            # Fix: Use the content after the matched HTML tag, not the attribute block
-            html_content = preceding_html[:start] + new_tag + html_content[end:]
+            new_tag = f"<{tag_name}{new_attrs}>"
+            # Fix: Properly reconstruct the HTML with the new tag and content after the attribute block
+            html_content = html_content[:start] + new_tag + html_content[end:match.start()] + html_content[match.end():]
     
     # Remove any remaining attribute blocks from the HTML
-    html_content = re.sub(r'\{([#.])(.+?)\}', '', html_content)
+    html_content = re.sub(attr_pattern, '', html_content)
     
     return html_content
 
@@ -181,8 +242,11 @@ def compile_markdown(input_file, output_file=None):
     ).use(footnote_plugin).enable("table")
     md.use(custom_fence_plugin)
 
+    # Process enhanced HTML tag syntax before markdown conversion
+    processed_content = process_enhanced_html_tags(post.content)
+    
     env = {}
-    html_content = md.render(post.content, env)
+    html_content = md.render(processed_content, env)
     
     # Process custom HTML attributes
     html_content = process_html_attributes(html_content)

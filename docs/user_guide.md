@@ -83,6 +83,39 @@ You can add custom IDs and classes to HTML elements using the `{#id .class}` syn
 Paragraph with custom class {.highlight}
 ```
 
+### Enhanced HTML Tags
+
+PowerPython now supports embedding raw HTML directly using the `!html[]` syntax:
+
+```markdown
+!html[<div class="alert alert-info">This is a Bootstrap alert!</div>]
+
+!html[<button class="btn btn-primary" onclick="alert('Hello!')">Click Me</button>]
+```
+
+### JavaScript Execution
+
+In addition to Python code execution, PowerPython now supports client-side JavaScript execution using `js-power` code blocks:
+
+```markdown
+```js-power
+console.log("Hello from PowerPython!");
+document.getElementById("output").innerHTML = "<p>Content dynamically added!</p>";
+```
+```
+
+### Improved Attribute Syntax
+
+The attribute syntax has been enhanced to support key-value pairs and quoted values:
+
+```markdown
+This div has data attributes {#data-div .card data-toggle="tooltip" data-title="This is a tooltip"}
+
+This paragraph has custom styles {.p-3 style="border: 2px solid #007acc;"}
+```
+
+For more details about these new features, see the [Phase 1 Features documentation](phase1_features.md).
+
 ## Frontmatter
 
 You can include metadata at the beginning of your markdown file using YAML frontmatter:
