@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Power Python IDE - Editor{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <h3>Editor</h3>
+        <div class="editor-container">
+            <textarea id="editor"># Welcome to Power Python IDE
+
+This is a sample markdown document with embedded Python code:
+
+```python-power
+print("Hello from Python!")
+for i in range(5):
+    print(f"Number: {i}")
+```
+
+You can also add CSS styles:
+
+```css-power
+.python-power-output {
+    background-color: #e7f3ff;
+    border-left: 4px solid #007acc;
+    padding: 15px;
+    margin: 15px 0;
+}
+```
+
+And use custom attributes:
+
+## This is a heading {#main-title .blue-text}
+
+Paragraph with custom class {.highlight}
+</textarea>
+        </div>
+        <div class="mt-3">
+            <input type="text" id="filename" class="form-control" placeholder="document.md" style="width: 300px; display: inline-block;">
+            <button id="save-document" class="btn btn-primary">Save Document</button>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <h3>Preview</h3>
+        <div class="preview-container" id="preview">
+            <p class="text-muted">Click "Compile" to see the rendered output</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize CodeMirror editor
+    var editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+        lineNumbers: true,
+        mode: "markdown",
+        theme: "default",
+        autoCloseBrackets: true,
+        lineWrapping: true
+    });
+    
+    // Compile button functionality
+    document.getElementById('compile-btn').addEventListener('click', function() {
+        var content = editor.getValue();
+        
+        fetch('/compile', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({content: content})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('preview').innerHTML = data.html;
+            } else {
+                document.getElementById('preview').innerHTML = '<div class="alert alert-danger">Error: ' + data.error + '</div>';
+            }
+        })
+        .catch(error => {
+            document.getElementById('preview').innerHTML = '<div class="alert alert-danger">Error: ' + error + '</div>';
+        });
+    });
+    
+    // Save button functionality
+    document.getElementById('save-document').addEventListener('click', function() {
+        var content = editor.getValue();
+        var filename = document.getElementById('filename').value || 'document.md';
+        
+        fetch('/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({filename: filename, content: content})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+        });
+    });
+</script>
+{% endblock %}

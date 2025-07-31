@@ -1,0 +1,6 @@
+Flask==2.3.2
+markdown-it-py==3.0.0
+mdit-py-plugins==0.4.0
+pygments==2.15.1
+python-frontmatter==1.0.0
+watchdog==3.0.0
